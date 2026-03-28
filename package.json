@@ -1,7 +1,6 @@
 {
   "name": "xsom-kg-bot",
   "version": "1.0.0",
-  "description": "XsomKG Telegram Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
