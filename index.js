@@ -78,7 +78,7 @@ bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const db = await loadDB();
   if (db.blocked && db.blocked[chatId]) { bot.sendMessage(chatId, `🚫 Ваш аккаунт заблокирован. Обратитесь: @Xsomadmin`); return; }
-  const active = Object.values(db.requests || {}).find(r => r.userId == chatId && r.status === 'pending');
+  const active = Object.values(db.requests || {}).find(r => r && r.userId == chatId && r.status === 'pending');
   if (active) { sendActiveMsg(chatId, active); return; }
   userStates[chatId] = null;
   sendMainMenu(chatId, msg.from.first_name);
@@ -93,7 +93,7 @@ bot.on('message', async (msg) => {
   const db = await loadDB();
   if (db.blocked && db.blocked[chatId]) { bot.sendMessage(chatId, `🚫 Ваш аккаунт заблокирован.`); return; }
   if (text === '🔄 Вызвать меню') { userStates[chatId] = null; sendMainMenu(chatId, msg.from.first_name); return; }
-  const active = Object.values(db.requests || {}).find(r => r.userId == chatId && r.status === 'pending');
+  const active = Object.values(db.requests || {}).find(r => r && r.userId == chatId && r.status === 'pending');
   if (active) { sendActiveMsg(chatId, active); return; }
   if (text === '⬅️ Главное меню' || text === '◀️ Отмена') { userStates[chatId] = null; sendMainMenu(chatId, msg.from.first_name); return; }
 
@@ -193,7 +193,7 @@ bot.on('photo', async (msg) => {
   const state = userStates[chatId];
   const db = await loadDB();
   if (db.blocked && db.blocked[chatId]) { bot.sendMessage(chatId, `🚫 Ваш аккаунт заблокирован.`); return; }
-  const active = Object.values(db.requests || {}).find(r => r.userId == chatId && r.status === 'pending');
+  const active = Object.values(db.requests || {}).find(r => r && r.userId == chatId && r.status === 'pending');
   if (active) { sendActiveMsg(chatId, active); return; }
 
   if (state && state.step === 'withdrawal_qr') {
