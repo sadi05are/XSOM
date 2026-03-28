@@ -6,6 +6,9 @@ const OWNER_ID = process.env.OWNER_ID;
 const BIN_ID = '69c811585fdde574550b329a';
 const BIN_KEY = '$2a$10$mKjpEH2VfuAAprcI6itLLevuVv1.PyilbivryoPx9fRLmjd5iVkSy';
 
+const SUPPORT = '@XSOMPlRAT';
+const PHONE = '996702300300'; // номер для оплаты (без +)
+
 const bot = new TelegramBot(TOKEN, { polling: true });
 const userStates = {};
 
@@ -37,12 +40,29 @@ function binRequest(method, data) {
 async function loadDB() {
   try {
     const res = await binRequest('GET');
-    return res.record || { requests: {}, blocked: {}, counter: 1 };
-  } catch (e) { return { requests: {}, blocked: {}, counter: 1 }; }
+    return res.record || { requests: {}, blocked: {}, counter: 1, botEnabled: true };
+  } catch (e) { return { requests: {}, blocked: {}, counter: 1, botEnabled: true }; }
 }
 
 async function saveDB(db) {
   try { await binRequest('PUT', db); } catch (e) { console.error('Save error:', e.message); }
+}
+
+// ── ГЕНЕРАЦИЯ ССЫЛОК ДЛЯ ОПЛАТЫ ──
+function getPaymentLinks(amount, fee) {
+  const phone = PHONE;
+  const phoneLocal = '0' + phone.slice(3); // 0702300300
+
+  // Mbank — deeplink
+  const mbankUrl = `https://mbank.kg/deeplink?action=transfer&phone=${phoneLocal}&amount=${fee}`;
+  // О!Деньги
+  const odeньgiUrl = `https://o.kg/pay?phone=${phoneLocal}&amount=${fee}`;
+  // Компаньон
+  const kompanionUrl = `https://kompanion.kg/payment?phone=${phoneLocal}&amount=${fee}`;
+  // Bakai
+  const bakaiUrl = `https://bakai.kg/transfer?phone=${phoneLocal}&amount=${fee}`;
+
+  return { mbankUrl, odeньgiUrl, kompanionUrl, bakaiUrl };
 }
 
 // ── HELPERS ──
@@ -56,7 +76,7 @@ function backKeyboard() {
 
 function sendMainMenu(chatId, firstName) {
   bot.sendMessage(chatId,
-    `🚀 Добро пожаловать${firstName ? ', ' + firstName : ''}!\n\n💰 Быстрые и безопасные финансовые операции:\n• Мгновенное пополнение счета\n• Надёжный вывод средств\n\n👨‍💼 Круглосуточная поддержка: @Xsomadmin\n\n🔒 Ваши транзакции защищены!`,
+    `🚀 Добро пожаловать${firstName ? ', ' + firstName : ''}!\n\n💰 Быстрые и безопасные финансовые операции:\n• Мгновенное пополнение счета\n• Надёжный вывод средств\n\n👨‍💼 Круглосуточная поддержка: ${SUPPORT}\n\n🔒 Ваши транзакции защищены!`,
     { reply_markup: mainMenuKeyboard() }
   );
 }
@@ -73,14 +93,46 @@ function sendWaitMsg(chatId, req) {
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const db = await loadDB();
+
   if (db.blocked && db.blocked[String(chatId)]) {
-    bot.sendMessage(chatId, `🚫 Ваш аккаунт заблокирован за нарушение правил.\n\nДля уточнения: @Xsomadmin`);
+    bot.sendMessage(chatId, `🚫 Ваш аккаунт заблокирован за нарушение правил.\n\nДля уточнения: ${SUPPORT}`);
     return;
   }
+
+  if (db.botEnabled === false && String(chatId) !== String(OWNER_ID)) {
+    bot.sendMessage(chatId, `⛔️ Бот временно отключён.\n\nПопробуйте позже или обратитесь: ${SUPPORT}`);
+    return;
+  }
+
   const active = Object.values(db.requests || {}).find(r => r && r.userId == chatId && r.status === 'pending');
   if (active) { sendWaitMsg(chatId, active); return; }
   userStates[chatId] = null;
   sendMainMenu(chatId, msg.from.first_name);
+});
+
+// ── /status ──
+bot.onText(/\/status/, async (msg) => {
+  if (String(msg.chat.id) !== String(OWNER_ID)) return;
+  const db = await loadDB();
+  const enabled = db.botEnabled !== false;
+  const pendingCount = Object.values(db.requests || {}).filter(r => r && r.status === 'pending').length;
+
+  bot.sendMessage(msg.chat.id,
+    `📊 <b>Статус бота XsomKG</b>\n\n` +
+    `${enabled ? '🟢 Бот работает' : '🔴 Бот отключён'}\n` +
+    `📋 Заявок в ожидании: <b>${pendingCount}</b>\n` +
+    `🗄 Всего заявок: <b>${Object.keys(db.requests || {}).length}</b>`,
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[
+          enabled
+            ? { text: '🔴 Отключить бота', callback_data: 'bot_disable' }
+            : { text: '🟢 Включить бота', callback_data: 'bot_enable' }
+        ]]
+      }
+    }
+  );
 });
 
 // ── /ban ──
@@ -92,7 +144,7 @@ bot.onText(/\/ban (.+)/, async (msg, match) => {
   db.blocked[targetId] = { userId: targetId, time: Date.now() };
   await saveDB(db);
   bot.sendMessage(msg.chat.id, `✅ Пользователь ${targetId} заблокирован.`);
-  try { bot.sendMessage(targetId, `🚫 Ваш аккаунт заблокирован за нарушение правил.\n\nДля уточнения: @Xsomadmin`); } catch (e) {}
+  try { bot.sendMessage(targetId, `🚫 Ваш аккаунт заблокирован за нарушение правил.\n\nДля уточнения: ${SUPPORT}`); } catch (e) {}
 });
 
 // ── /unban ──
@@ -116,6 +168,11 @@ bot.on('message', async (msg) => {
 
   if (db.blocked && db.blocked[String(chatId)]) {
     bot.sendMessage(chatId, `🚫 Ваш аккаунт заблокирован за нарушение правил.`);
+    return;
+  }
+
+  if (db.botEnabled === false && String(chatId) !== String(OWNER_ID)) {
+    bot.sendMessage(chatId, `⛔️ Бот временно отключён.\n\nПопробуйте позже или обратитесь: ${SUPPORT}`);
     return;
   }
 
@@ -163,36 +220,19 @@ bot.on('message', async (msg) => {
       await bot.sendMessage(chatId, `⚠️ Введите сумму от 35 до 90 000 сом`);
       return;
     }
-    userStates[chatId] = { ...state, step: 'deposit_payment', amount };
-    const PAYMENT_METHODS = ['Мбанк', 'О деньги', 'Компаньон', 'Balance.Kg', 'Бакай', 'Оптима', 'Mega'];
-    const btns = PAYMENT_METHODS.map(m => [{ text: m }]);
-    btns.push([{ text: '◀️ Назад' }]);
-    await bot.sendMessage(chatId, `💳 Выберите способ оплаты:`, { reply_markup: { keyboard: btns, resize_keyboard: true } });
-    return;
-  }
+    const fee = (amount * 1.01).toFixed(2);
+    userStates[chatId] = { ...state, step: 'deposit_receipt', amount, fee };
 
-  if (state && state.step === 'deposit_payment') {
-    const PAYMENT_METHODS = ['Мбанк', 'О деньги', 'Компаньон', 'Balance.Kg', 'Бакай', 'Оптима', 'Mega'];
-    if (!PAYMENT_METHODS.includes(text)) {
-      await bot.sendMessage(chatId, `⚠️ Выберите способ из списка`);
-      return;
-    }
-    userStates[chatId] = { ...state, step: 'deposit_wallet', method: text };
-    await bot.sendMessage(chatId, `📱 Пришлите номер своего кошелька:`, { reply_markup: backKeyboard() });
-    return;
-  }
+    const { mbankUrl, odeньgiUrl, kompanionUrl, bakaiUrl } = getPaymentLinks(amount, fee);
 
-  if (state && state.step === 'deposit_wallet') {
-    const fee = (state.amount * 1.01).toFixed(2);
-    userStates[chatId] = { ...state, step: 'deposit_receipt', wallet: text, fee };
     await bot.sendMessage(chatId,
-      `📎 Оплатите и прикрепите скриншот чека\n\n💰 Сумма к оплате: <b>${fee} KGS</b>\n\n⏱ У вас есть 5 минут на оплату`,
+      `💳 Оплатите на номер: <b>+${PHONE}</b>\n\n💰 Сумма к оплате: <b>${fee} KGS</b>\n\n📎 После оплаты отправьте скриншот чека\n⏱ У вас есть 5 минут`,
       {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: 'Mbank ↗️', url: 'https://mbank.kg' }, { text: 'О деньги ↗️', url: 'https://o.kg' }],
-            [{ text: 'Bakai ↗️', url: 'https://bakai.kg' }, { text: 'Mega ↗️', url: 'https://mega.kg' }],
+            [{ text: '🏦 Mbank', url: mbankUrl }, { text: '💚 О!Деньги', url: odeньgiUrl }],
+            [{ text: '🏧 Компаньон', url: kompanionUrl }, { text: '🏦 Bakai', url: bakaiUrl }],
             [{ text: '◀️ Отмена', callback_data: 'cancel' }]
           ]
         }
@@ -283,6 +323,11 @@ bot.on('photo', async (msg) => {
     return;
   }
 
+  if (db.botEnabled === false && String(chatId) !== String(OWNER_ID)) {
+    bot.sendMessage(chatId, `⛔️ Бот временно отключён.`);
+    return;
+  }
+
   const active = Object.values(db.requests || {}).find(r => r && r.userId == chatId && r.status === 'pending');
   if (active) { sendWaitMsg(chatId, active); return; }
 
@@ -304,7 +349,6 @@ bot.on('photo', async (msg) => {
     const req = {
       id: reqId, type: 'deposit',
       userId: chatId, betId: state.betId,
-      method: state.method, wallet: state.wallet,
       amount: state.amount, fee: state.fee,
       photoUrl, status: 'pending', time: Date.now(),
       firstName: msg.from.first_name || '',
@@ -317,7 +361,7 @@ bot.on('photo', async (msg) => {
 
     try {
       await bot.sendPhoto(OWNER_ID, photoId, {
-        caption: `╔══════════════════════╗\n║  📥 ЗАЯВКА НА ПОПОЛНЕНИЕ #${reqId}  ║\n╚══════════════════════╝\n\n👤 @${req.username || 'нет'}\n🆔 Chat ID: <code>${chatId}</code>\n🎰 1xBET ID: <code>${req.betId}</code>\n💳 Способ: ${req.method}\n📱 Кошелёк: <code>${req.wallet}</code>\n💰 Сумма: <b>${req.fee} KGS</b>\n\n⏰ Ожидает решения`,
+        caption: `╔══════════════════════╗\n║  📥 ЗАЯВКА НА ПОПОЛНЕНИЕ #${reqId}  ║\n╚══════════════════════╝\n\n👤 @${req.username || 'нет'}\n🆔 Chat ID: <code>${chatId}</code>\n🎰 1xBET ID: <code>${req.betId}</code>\n💰 Сумма: <b>${req.fee} KGS</b>\n\n⏰ Ожидает решения`,
         parse_mode: 'HTML',
         reply_markup: { inline_keyboard: [[{ text: '✅ Одобрить', callback_data: `approve_${reqId}` }, { text: '❌ Отклонить', callback_data: `reject_${reqId}` }]] }
       });
@@ -333,6 +377,29 @@ bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const msgId = query.message.message_id;
   const data = query.data;
+
+  if (data === 'bot_enable' || data === 'bot_disable') {
+    if (String(chatId) !== String(OWNER_ID)) return;
+    const db = await loadDB();
+    db.botEnabled = data === 'bot_enable';
+    await saveDB(db);
+    const enabled = db.botEnabled;
+    await bot.answerCallbackQuery(query.id, { text: enabled ? '✅ Бот включён' : '🔴 Бот отключён' });
+    await bot.editMessageText(
+      `📊 <b>Статус бота XsomKG</b>\n\n${enabled ? '🟢 Бот работает' : '🔴 Бот отключён'}`,
+      {
+        chat_id: chatId, message_id: msgId, parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[
+            enabled
+              ? { text: '🔴 Отключить бота', callback_data: 'bot_disable' }
+              : { text: '🟢 Включить бота', callback_data: 'bot_enable' }
+          ]]
+        }
+      }
+    );
+    return;
+  }
 
   if (data === 'cancel') {
     await bot.answerCallbackQuery(query.id);
