@@ -48,21 +48,23 @@ async function saveDB(db) {
   try { await binRequest('PUT', db); } catch (e) { console.error('Save error:', e.message); }
 }
 
-// ── ГЕНЕРАЦИЯ ССЫЛОК ДЛЯ ОПЛАТЫ ──
-function getPaymentLinks(amount, fee) {
-  const phone = PHONE;
+// ── СЛУЧАЙНЫЕ КОПЕЙКИ ──
+function addKopeyki(amount) {
+  const kopeyki = Math.floor(Math.random() * 99) + 1; // от 1 до 99
+  return (amount + kopeyki / 100).toFixed(2);
+}
+
+// ── ССЫЛКИ ДЛЯ ОПЛАТЫ ──
+function getPaymentLinks(fee) {
+  const phone = PHONE; // 996702300300
   const phoneLocal = '0' + phone.slice(3); // 0702300300
 
-  // Mbank — deeplink
-  const mbankUrl = `https://mbank.kg/deeplink?action=transfer&phone=${phoneLocal}&amount=${fee}`;
-  // О!Деньги
-  const odeньgiUrl = `https://o.kg/pay?phone=${phoneLocal}&amount=${fee}`;
-  // Компаньон
-  const kompanionUrl = `https://kompanion.kg/payment?phone=${phoneLocal}&amount=${fee}`;
-  // Bakai
+  const mbankUrl = `https://mbank.kg/transfer?phone=${phoneLocal}&amount=${fee}`;
+  const obankUrl = `https://o.kg/transfer?phone=${phoneLocal}&amount=${fee}`;
+  const kompanionUrl = `https://kompanion.kg/transfer?phone=${phoneLocal}&amount=${fee}`;
   const bakaiUrl = `https://bakai.kg/transfer?phone=${phoneLocal}&amount=${fee}`;
 
-  return { mbankUrl, odeньgiUrl, kompanionUrl, bakaiUrl };
+  return { mbankUrl, obankUrl, kompanionUrl, bakaiUrl };
 }
 
 // ── HELPERS ──
@@ -220,10 +222,10 @@ bot.on('message', async (msg) => {
       await bot.sendMessage(chatId, `⚠️ Введите сумму от 35 до 90 000 сом`);
       return;
     }
-    const fee = (amount * 1.01).toFixed(2);
+    const fee = addKopeyki(amount);
     userStates[chatId] = { ...state, step: 'deposit_receipt', amount, fee };
 
-    const { mbankUrl, odeньgiUrl, kompanionUrl, bakaiUrl } = getPaymentLinks(amount, fee);
+    const { mbankUrl, obankUrl, kompanionUrl, bakaiUrl } = getPaymentLinks(fee);
 
     await bot.sendMessage(chatId,
       `💳 Оплатите на номер: <b>+${PHONE}</b>\n\n💰 Сумма к оплате: <b>${fee} KGS</b>\n\n📎 После оплаты отправьте скриншот чека\n⏱ У вас есть 5 минут`,
@@ -231,7 +233,7 @@ bot.on('message', async (msg) => {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🏦 Mbank', url: mbankUrl }, { text: '💚 О!Деньги', url: odeньgiUrl }],
+            [{ text: '🏦 Mbank', url: mbankUrl }, { text: '🩷 О!Банк', url: obankUrl }],
             [{ text: '🏧 Компаньон', url: kompanionUrl }, { text: '🏦 Bakai', url: bakaiUrl }],
             [{ text: '◀️ Отмена', callback_data: 'cancel' }]
           ]
